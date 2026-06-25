@@ -1,11 +1,24 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:keyvault/infra/api/services/firestore_service.dart';
 import 'package:keyvault/infra/api/models/user_model.dart';
+import 'package:keyvault/infra/api/services/firestore_service.dart';
 
 class UserService {
   UserService._();
 
   static const String _collection = 'users';
+  static final Random _random = Random.secure();
+
+  static String generateKeyVaultId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+    final randomPart = List.generate(
+      12,
+      (_) => _random.nextInt(36).toRadixString(36),
+    ).join();
+
+    return 'kv-$timestamp-$randomPart';
+  }
 
   /// Create a new user document
   static Future<void> createUser(UserModel user) async {

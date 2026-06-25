@@ -10,6 +10,8 @@ class KvTextField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.onSubmitted,
+    this.readOnly = false,
+    this.onTap,
   });
 
   final TextEditingController controller;
@@ -19,6 +21,8 @@ class KvTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onSubmitted;
+  final bool readOnly;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +32,8 @@ class KvTextField extends StatelessWidget {
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       onSubmitted: onSubmitted,
+      readOnly: readOnly,
+      onTap: onTap,
       decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
     );
   }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/services/auth_service.dart';
+import '../profile/profile_screen.dart';
 import '../../routes/route_names.dart';
 import '../../widgets/kv_section_card.dart';
 
@@ -16,10 +17,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   var _selectedIndex = 0;
+  var _profileRefreshToken = 0;
 
   static const _trustedContacts = [
     _TrustedContact(
-      'Asha Rao',
+      'Diyaaa',
       'QR verified',
       'Lunch keys are ready to exchange.',
       '12:42',
@@ -43,11 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.currentUser;
-    final displayName = user?.displayName?.isNotEmpty ?? false
-        ? user!.displayName!
-        : 'KeyVault user';
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('KeyVault', style: AppTextTheme.title),
@@ -78,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _selectedIndex,
         children: [
           _ChatsView(contacts: _trustedContacts),
-          _ProfileView(displayName: displayName, email: user?.email),
+          ProfileScreen(refreshToken: _profileRefreshToken),
           _CallsView(contacts: _trustedContacts),
         ],
       ),
@@ -92,7 +89,12 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
+          setState(() {
+            _selectedIndex = index;
+            if (index == 1) {
+              _profileRefreshToken++;
+            }
+          });
         },
         destinations: const [
           NavigationDestination(
@@ -165,61 +167,6 @@ class _ChatsView extends StatelessWidget {
       itemBuilder: (context, index) => _ContactTile(contact: contacts[index]),
       separatorBuilder: (context, index) => const SizedBox(height: 10),
       itemCount: contacts.length,
-    );
-  }
-}
-
-class _ProfileView extends StatelessWidget {
-  const _ProfileView({required this.displayName, required this.email});
-
-  final String displayName;
-  final String? email;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        KvSectionCard(
-          child: Row(
-            children: [
-              const CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primaryMuted,
-                foregroundColor: AppColors.primary,
-                child: Icon(Icons.person, size: 30),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayName, style: AppTextTheme.heading),
-                    const SizedBox(height: 4),
-                    Text(
-                      email ?? 'No email linked',
-                      style: AppTextTheme.caption,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _InfoTile(
-          icon: Icons.verified_user_outlined,
-          title: 'Physical trust active',
-          subtitle: 'Contacts are verified before secure messaging.',
-        ),
-        const SizedBox(height: 12),
-        const _InfoTile(
-          icon: Icons.lock_outline,
-          title: 'Keys stay on this device',
-          subtitle: 'Server-side contact keys are not stored.',
-        ),
-      ],
     );
   }
 }
@@ -437,42 +384,6 @@ class _ContactMethodTile extends StatelessWidget {
       title: Text(title),
       subtitle: Text(subtitle),
       onTap: () => Navigator.of(context).pop(method),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  const _InfoTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return KvSectionCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.primary),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTextTheme.heading),
-                const SizedBox(height: 4),
-                Text(subtitle, style: AppTextTheme.caption),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-        ],
-      ),
     );
   }
 }

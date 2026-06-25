@@ -18,9 +18,9 @@ class AuthService {
   }
 
   static Future<void> register({
-    required String name,
     required String email,
     required String password,
+    String name = '',
   }) async {
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),

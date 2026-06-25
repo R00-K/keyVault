@@ -6,7 +6,9 @@ class UserModel {
   final String username;
   final String displayName;
   final String email;
+  final String phoneNumber;
   final String? photoUrl;
+  final Timestamp dateOfBirth;
   final Timestamp createdAt;
   final Timestamp? lastSeen;
   final bool isOnline;
@@ -17,11 +19,36 @@ class UserModel {
     required this.username,
     required this.displayName,
     required this.email,
+    required this.phoneNumber,
     this.photoUrl,
+    required this.dateOfBirth,
     required this.createdAt,
     this.lastSeen,
     required this.isOnline,
   });
+
+  factory UserModel.create({
+    required String uid,
+    required String keyVaultId,
+    required String displayName,
+    required String email,
+    required String phoneNumber,
+    required Timestamp dateOfBirth,
+    String? photoUrl,
+  }) {
+    return UserModel(
+      uid: uid,
+      keyVaultId: keyVaultId,
+      username: '',
+      displayName: displayName,
+      email: email,
+      phoneNumber: phoneNumber,
+      photoUrl: photoUrl,
+      dateOfBirth: dateOfBirth,
+      createdAt: Timestamp.now(),
+      isOnline: true,
+    );
+  }
 
   UserModel copyWith({
     String? uid,
@@ -29,7 +56,9 @@ class UserModel {
     String? username,
     String? displayName,
     String? email,
+    String? phoneNumber,
     String? photoUrl,
+    Timestamp? dateOfBirth,
     Timestamp? createdAt,
     Timestamp? lastSeen,
     bool? isOnline,
@@ -40,7 +69,9 @@ class UserModel {
       username: username ?? this.username,
       displayName: displayName ?? this.displayName,
       email: email ?? this.email,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       photoUrl: photoUrl ?? this.photoUrl,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       createdAt: createdAt ?? this.createdAt,
       lastSeen: lastSeen ?? this.lastSeen,
       isOnline: isOnline ?? this.isOnline,
@@ -54,7 +85,9 @@ class UserModel {
       username: map['username'] ?? '',
       displayName: map['displayName'] ?? '',
       email: map['email'] ?? '',
+      phoneNumber: map['phoneNumber'] ?? '',
       photoUrl: map['photoUrl'],
+      dateOfBirth: map['dateOfBirth'] ?? Timestamp.now(),
       createdAt: map['createdAt'] ?? Timestamp.now(),
       lastSeen: map['lastSeen'],
       isOnline: map['isOnline'] ?? false,
@@ -68,7 +101,9 @@ class UserModel {
       'username': username,
       'displayName': displayName,
       'email': email,
+      'phoneNumber': phoneNumber,
       'photoUrl': photoUrl,
+      'dateOfBirth': dateOfBirth,
       'createdAt': createdAt,
       'lastSeen': lastSeen,
       'isOnline': isOnline,

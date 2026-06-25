@@ -17,7 +17,6 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   String? _errorText;
@@ -25,19 +24,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
-    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      setState(() => _errorText = 'Enter your name, email, and password.');
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorText = 'Enter your email and password.');
       return;
     }
 
@@ -47,11 +44,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await AuthService.register(name: name, email: email, password: password);
+      debugPrint('[RegisterScreen] Creating Firebase Auth user for $email');
+      await AuthService.register(email: email, password: password);
       if (mounted) {
-        context.go(RouteNames.home);
+        debugPrint('[RegisterScreen] Firebase Auth success. Opening profile.');
+        context.go(RouteNames.completeProfile);
       }
     } catch (error) {
+      debugPrint('[RegisterScreen] Firebase Auth failed: $error');
       if (mounted) {
         setState(() => _errorText = AuthService.errorMessage(error));
       }
@@ -79,13 +79,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           KvSectionCard(
             child: Column(
               children: [
-                KvTextField(
-                  controller: _nameController,
-                  label: 'Display name',
-                  icon: Icons.badge_outlined,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 16),
                 KvTextField(
                   controller: _emailController,
                   label: 'Email',

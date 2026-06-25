@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
+import '../screens/auth/complete_profile_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/chat/chat_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -21,6 +22,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.register,
       builder: (context, state) => const RegisterScreen(),
+    ),
+    GoRoute(
+      path: RouteNames.completeProfile,
+      builder: (context, state) => const CompleteProfileScreen(),
     ),
     GoRoute(
       path: RouteNames.home,

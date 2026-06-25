@@ -4,6 +4,7 @@ class RouteNames {
   static const splash = '/';
   static const login = '/login';
   static const register = '/register';
+  static const completeProfile = '/complete-profile';
   static const home = '/home';
   static const chat = '/chat/:contactName';
 
