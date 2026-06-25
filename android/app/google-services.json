@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "714342543956",
+    "project_id": "keyvault-e703b",
+    "storage_bucket": "keyvault-e703b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:714342543956:android:1c49480cdd3be4df4373c1",
+        "android_client_info": {
+          "package_name": "com.rook.keyvault"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtEx02tYJGY48AqJpLcaaTHWfY1DgBgT8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
