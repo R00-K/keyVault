@@ -51,6 +51,7 @@ class ReceiveTrustNfcScreen extends StatelessWidget {
                         displayName: "temp-user",
                         publicKey: "temp-public-key",
                         timestamp: DateTime.now().millisecondsSinceEpoch,
+                           isResponse: false,
                       ),
                     );
                     if (context.mounted) {

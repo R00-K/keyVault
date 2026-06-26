@@ -41,6 +41,7 @@ class KeyExchangeService {
       displayName: displayName,
       publicKey: session.publicKey,
       timestamp: DateTime.now().millisecondsSinceEpoch,
+      isResponse: false,
     );
   }
 
@@ -63,6 +64,21 @@ class KeyExchangeService {
       publicKey: publicKey,
 
       peerPublicKey: payload.publicKey,
+    );
+  }
+
+  static TrustPayloadModel generateResponsePayload({
+    required TrustSessionModel session,
+    required String keyVaultId,
+    required String displayName,
+  }) {
+    return TrustPayloadModel(
+      sessionId: session.sessionId,
+      keyVaultId: keyVaultId,
+      displayName: displayName,
+      publicKey: session.publicKey,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      isResponse: false,
     );
   }
 

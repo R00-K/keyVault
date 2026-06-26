@@ -5,12 +5,16 @@ class TrustPayloadModel {
   final String publicKey;
   final int timestamp;
 
+  // NEW
+  final bool isResponse;
+
   const TrustPayloadModel({
     required this.sessionId,
     required this.keyVaultId,
     required this.displayName,
     required this.publicKey,
     required this.timestamp,
+    required this.isResponse,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +24,7 @@ class TrustPayloadModel {
       "displayName": displayName,
       "publicKey": publicKey,
       "timestamp": timestamp,
+      "isResponse": isResponse,
     };
   }
 
@@ -30,6 +35,7 @@ class TrustPayloadModel {
       displayName: map["displayName"],
       publicKey: map["publicKey"],
       timestamp: map["timestamp"],
+      isResponse: map["isResponse"] ?? false,
     );
   }
 }
