@@ -18,7 +18,19 @@ class TrustEventService {
     });
   }
 
-  static Stream<DocumentSnapshot<Map<String, dynamic>>> qrScannedStream({
+  static Future<void> notifyTrustEstablished({
+    required String sessionId,
+    required String receiverKeyVaultId,
+  }) async {
+    await FirestoreService.document('$_collection/$sessionId').set({
+      'type': 'trust_established',
+      'sessionId': sessionId,
+      'receiverKeyVaultId': receiverKeyVaultId,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> eventStream({
     required String sessionId,
   }) {
     return FirestoreService.document('$_collection/$sessionId').snapshots();

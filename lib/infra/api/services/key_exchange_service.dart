@@ -102,6 +102,23 @@ class KeyExchangeService {
     );
   }
 
+  /// STEP 6: Complete trust by scanning the response QR
+  static Future<TrustedContactModel> completeTrustWithResponse({
+    required TrustSessionModel session,
+    required TrustPayloadModel responsePayload,
+  }) async {
+    final updatedSession = session.copyWith(
+      peerPublicKey: responsePayload.publicKey,
+      state: TrustState.verified,
+    );
+
+    return establishTrustedContact(
+      session: updatedSession,
+      keyVaultId: responsePayload.keyVaultId,
+      displayName: responsePayload.displayName,
+    );
+  }
+
   // -----------------------
   // INTERNAL HELPERS
   // -----------------------

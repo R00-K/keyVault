@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -13,13 +14,18 @@ import '../../../../infra/api/services/auth_service.dart';
 import '../../../../infra/api/services/key_exchange_service.dart';
 import '../../../../infra/api/services/trust_event_service.dart';
 import '../../../../infra/api/services/user_service.dart';
+import '../../../routes/route_names.dart';
 import '../../../widgets/kv_button.dart';
+import 'qr_scanner_screen.dart';
+
+enum _HandshakeStage { waiting, scanned, completed }
 
 class EstablishTrustQrScreen extends StatefulWidget {
   const EstablishTrustQrScreen({super.key});
 
   @override
-  State<EstablishTrustQrScreen> createState() => _EstablishTrustQrScreenState();
+  State<EstablishTrustQrScreen> createState() =>
+      _EstablishTrustQrScreenState();
 }
 
 class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
@@ -30,9 +36,9 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
 
     final currentUser = AuthService.currentUser;
     if (currentUser == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please sign in again.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again.')),
+      );
       return;
     }
 
@@ -59,7 +65,20 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
       if (!mounted) return;
       setState(() => _isPreparing = false);
 
-      _showQrSheet(session, payload, qrData);
+      final contactName = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _QrSheet(
+          session: session,
+          payload: payload,
+          qrData: qrData,
+        ),
+      );
+
+      if (contactName != null && mounted) {
+        context.go(RouteNames.chatFor(contactName));
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _isPreparing = false);
@@ -67,23 +86,6 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
         const SnackBar(content: Text('Could not prepare QR trust.')),
       );
     }
-  }
-
-  void _showQrSheet(
-    TrustSessionModel session,
-    TrustPayloadModel payload,
-    String qrData,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _QrSheet(
-        session: session,
-        payload: payload,
-        qrData: qrData,
-      ),
-    );
   }
 
   @override
@@ -154,16 +156,19 @@ class _QrSheet extends StatefulWidget {
 
 class _QrSheetState extends State<_QrSheet> {
   StreamSubscription<dynamic>? _eventSub;
-  var _isScanned = false;
+  var _stage = _HandshakeStage.waiting;
+  var _isScanningResponse = false;
 
   @override
   void initState() {
     super.initState();
-    _eventSub = TrustEventService.qrScannedStream(
+    _eventSub = TrustEventService.eventStream(
       sessionId: widget.session.sessionId,
     ).listen((snapshot) {
-      if (snapshot.exists && mounted) {
-        setState(() => _isScanned = true);
+      if (!snapshot.exists || !mounted) return;
+      final data = snapshot.data();
+      if (data?['type'] == 'trust_qr_scanned') {
+        setState(() => _stage = _HandshakeStage.scanned);
       }
     });
   }
@@ -174,11 +179,63 @@ class _QrSheetState extends State<_QrSheet> {
     super.dispose();
   }
 
+  Future<void> _scanResponseQr() async {
+    if (_isScanningResponse) return;
+
+    final payload = await Navigator.of(context).push<TrustPayloadModel>(
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+
+    if (payload == null || !mounted) return;
+
+    setState(() => _isScanningResponse = true);
+
+    try {
+      await KeyExchangeService.completeTrustWithResponse(
+        session: widget.session,
+        responsePayload: payload,
+      );
+
+      final currentUser = AuthService.currentUser;
+      if (currentUser != null) {
+        final profile = await UserService.getUser(currentUser.uid);
+        await TrustEventService.notifyTrustEstablished(
+          sessionId: widget.session.sessionId,
+          receiverKeyVaultId: profile?.keyVaultId ?? currentUser.uid,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() => _stage = _HandshakeStage.completed);
+
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        Navigator.of(context).pop(payload.displayName);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isScanningResponse = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to complete trust handshake.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      child: _stage == _HandshakeStage.completed
+          ? _buildCompletedSheet()
+          : _buildActiveSheet(),
+    );
+  }
+
+  Widget _buildActiveSheet() {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return DraggableScrollableSheet(
+      key: const ValueKey('active'),
       initialChildSize: 0.72,
       minChildSize: 0.5,
       maxChildSize: 0.9,
@@ -208,10 +265,11 @@ class _QrSheetState extends State<_QrSheet> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: _isScanned
+                color: _stage == _HandshakeStage.scanned
                     ? AppColors.success.withValues(alpha: 0.15)
                     : AppColors.surfaceVariant,
                 borderRadius: BorderRadius.circular(12),
@@ -219,10 +277,10 @@ class _QrSheetState extends State<_QrSheet> {
               child: Row(
                 children: [
                   Icon(
-                    _isScanned
+                    _stage == _HandshakeStage.scanned
                         ? Icons.check_circle
                         : Icons.hourglass_empty,
-                    color: _isScanned
+                    color: _stage == _HandshakeStage.scanned
                         ? AppColors.success
                         : AppColors.textSecondary,
                     size: 20,
@@ -230,13 +288,13 @@ class _QrSheetState extends State<_QrSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _isScanned
+                      _stage == _HandshakeStage.scanned
                           ? 'QR Successfully Scanned\nPlease scan the QR displayed on the other device.'
                           : 'Waiting for the other user to scan...',
                       style: AppTextTheme.caption,
                     ),
                   ),
-                  if (!_isScanned)
+                  if (_stage == _HandshakeStage.waiting)
                     const SizedBox(
                       width: 16,
                       height: 16,
@@ -246,6 +304,47 @@ class _QrSheetState extends State<_QrSheet> {
               ),
             ),
             const SizedBox(height: 24),
+            if (_stage == _HandshakeStage.scanned)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        onPressed: _isScanningResponse ? null : _scanResponseQr,
+                        icon: _isScanningResponse
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.qr_code_scanner_outlined),
+                        label: Text(
+                          _isScanningResponse
+                              ? 'Processing...'
+                              : 'Scan Response QR',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.onPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Center(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -323,6 +422,78 @@ class _QrSheetState extends State<_QrSheet> {
                 child: const Text('Close', style: AppTextTheme.body),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletedSheet() {
+    return DraggableScrollableSheet(
+      key: const ValueKey('completed'),
+      initialChildSize: 0.5,
+      minChildSize: 0.5,
+      maxChildSize: 0.6,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  color: AppColors.textSecondary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Spacer(),
+            Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_circle,
+                        color: AppColors.success,
+                        size: 48,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Trust Successfully\nEstablished',
+              style: AppTextTheme.display,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'You can now securely chat with ${widget.payload.displayName}.',
+              style: AppTextTheme.bodyMuted,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Spacer(),
           ],
         ),
       ),
