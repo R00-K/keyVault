@@ -12,7 +12,7 @@ class AppTheme {
     scaffoldBackgroundColor: AppColors.background,
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primary,
-      onPrimary: Colors.white,
+      onPrimary: AppColors.onPrimary,
       secondary: AppColors.primary,
       surface: AppColors.surface,
       onSurface: AppColors.textPrimary,
@@ -69,7 +69,7 @@ class AppTheme {
       style: ElevatedButton.styleFrom(
         minimumSize: const Size(double.infinity, 56),
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        foregroundColor: AppColors.onPrimary,
         disabledBackgroundColor: AppColors.primaryMuted,
         disabledForegroundColor: AppColors.textSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

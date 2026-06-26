@@ -6,8 +6,8 @@
 - [x] Firestore
 - [x] FirestoreService
 - [x] UserModel
-- [ ] UserService
-- [ ] Auto-create user profile
+- [x] UserService
+- [x] Auto-create user profile
 
 ## Phase 2 - Contacts
 - [ ] ContactModel
