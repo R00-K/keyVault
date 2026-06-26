@@ -78,7 +78,7 @@ class KeyExchangeService {
       displayName: displayName,
       publicKey: session.publicKey,
       timestamp: DateTime.now().millisecondsSinceEpoch,
-      isResponse: false,
+      isResponse:true,
     );
   }
 

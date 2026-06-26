@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../../../../infra/api/models/trust/trust_payload_model.dart';
 import '../../../../infra/api/models/trust/trust_session_model.dart';
 import '../../../../infra/api/services/auth_service.dart';
 import '../../../../infra/api/services/key_exchange_service.dart';
+import '../../../../infra/api/services/trust_event_service.dart';
 import '../../../../infra/api/services/user_service.dart';
 import '../../../widgets/kv_button.dart';
 
@@ -103,7 +105,11 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
                   color: AppColors.primaryMuted,
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(Icons.qr_code_2_outlined, size: 40, color: AppColors.primary),
+                child: const Icon(
+                  Icons.qr_code_2_outlined,
+                  size: 40,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -131,7 +137,7 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
   }
 }
 
-class _QrSheet extends StatelessWidget {
+class _QrSheet extends StatefulWidget {
   const _QrSheet({
     required this.session,
     required this.payload,
@@ -141,6 +147,32 @@ class _QrSheet extends StatelessWidget {
   final TrustSessionModel session;
   final TrustPayloadModel payload;
   final String qrData;
+
+  @override
+  State<_QrSheet> createState() => _QrSheetState();
+}
+
+class _QrSheetState extends State<_QrSheet> {
+  StreamSubscription<dynamic>? _eventSub;
+  var _isScanned = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _eventSub = TrustEventService.qrScannedStream(
+      sessionId: widget.session.sessionId,
+    ).listen((snapshot) {
+      if (snapshot.exists && mounted) {
+        setState(() => _isScanned = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _eventSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,11 +207,43 @@ class _QrSheet extends StatelessWidget {
               style: AppTextTheme.heading,
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Have the receiving device scan this code.',
-              style: AppTextTheme.caption,
-              textAlign: TextAlign.center,
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: _isScanned
+                    ? AppColors.success.withValues(alpha: 0.15)
+                    : AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _isScanned
+                        ? Icons.check_circle
+                        : Icons.hourglass_empty,
+                    color: _isScanned
+                        ? AppColors.success
+                        : AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _isScanned
+                          ? 'QR Successfully Scanned\nPlease scan the QR displayed on the other device.'
+                          : 'Waiting for the other user to scan...',
+                      style: AppTextTheme.caption,
+                    ),
+                  ),
+                  if (!_isScanned)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(height: 24),
             Center(
@@ -197,7 +261,7 @@ class _QrSheet extends StatelessWidget {
                   ],
                 ),
                 child: QrImageView(
-                  data: qrData,
+                  data: widget.qrData,
                   version: QrVersions.auto,
                   size: 260,
                   backgroundColor: Colors.white,
@@ -207,13 +271,16 @@ class _QrSheet extends StatelessWidget {
             const SizedBox(height: 16),
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.surfaceVariant,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'Session ${session.sessionId}',
+                  'Session ${widget.session.sessionId}',
                   style: AppTextTheme.caption,
                 ),
               ),
@@ -232,7 +299,9 @@ class _QrSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SelectableText(
-                    const JsonEncoder.withIndent('  ').convert(payload.toMap()),
+                    const JsonEncoder.withIndent('  ').convert(
+                      widget.payload.toMap(),
+                    ),
                     style: AppTextTheme.caption,
                   ),
                 ),
