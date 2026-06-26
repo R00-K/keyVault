@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/services/auth_service.dart';
-import '../profile/profile_screen.dart';
 import '../../routes/route_names.dart';
-import '../../widgets/kv_section_card.dart';
+import '../keys/key_screen.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,7 +15,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  var _selectedIndex = 0;
+  var _selectedIndex = 1;
+  var _keysRefreshToken = 0;
   var _profileRefreshToken = 0;
 
   static const _trustedContacts = [
@@ -49,11 +49,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('KeyVault', style: AppTextTheme.title),
         actions: [
-          IconButton(
-            tooltip: 'New contact',
-            onPressed: _showNewContactOptions,
-            icon: const Icon(Icons.person_add_alt_1_outlined),
-          ),
           PopupMenuButton<_HomeMenuAction>(
             tooltip: 'More options',
             icon: const Icon(Icons.more_vert),
@@ -75,23 +70,20 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _selectedIndex,
         children: [
           _ChatsView(contacts: _trustedContacts),
+          KeyScreen(refreshToken: _keysRefreshToken),
           ProfileScreen(refreshToken: _profileRefreshToken),
           _CallsView(contacts: _trustedContacts),
         ],
       ),
-      floatingActionButton: _selectedIndex == 0
-          ? FloatingActionButton(
-              tooltip: 'New contact',
-              onPressed: _showNewContactOptions,
-              child: const Icon(Icons.chat_outlined),
-            )
-          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() {
             _selectedIndex = index;
             if (index == 1) {
+              _keysRefreshToken++;
+            }
+            if (index == 2) {
               _profileRefreshToken++;
             }
           });
@@ -101,6 +93,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.chat_bubble_outline),
             selectedIcon: Icon(Icons.chat_bubble),
             label: 'Chats',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.key_outlined),
+            selectedIcon: Icon(Icons.key),
+            label: 'Keys',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -117,26 +114,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _showNewContactOptions() async {
-    final method = await showModalBottomSheet<_ContactAddMethod>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => const _NewContactSheet(),
-    );
-
-    if (!mounted || method == null) return;
-
-    final message = switch (method) {
-      _ContactAddMethod.qr => 'QR contact verification is coming next.',
-      _ContactAddMethod.nfc => 'NFC contact verification is coming next.',
-      _ContactAddMethod.manual => 'Manual key typing is coming next.',
-    };
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _handleMenuAction(
     BuildContext context,
     _HomeMenuAction action,
@@ -146,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Settings screen is coming next.')),
         );
+        break;
       case _HomeMenuAction.signOut:
         await AuthService.signOut();
         if (context.mounted) {
@@ -194,66 +172,15 @@ class _ContactTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        context.push(RouteNames.chatFor(contact.name));
-      },
-      child: KvSectionCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              backgroundColor: AppColors.surfaceVariant,
-              foregroundColor: AppColors.primary,
-              child: Icon(Icons.lock_person_outlined),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          contact.name,
-                          style: AppTextTheme.heading,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Text(contact.time, style: AppTextTheme.caption),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.verified_outlined,
-                        size: 16,
-                        color: AppColors.success,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          contact.messagePreview,
-                          style: AppTextTheme.caption,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (contact.unreadCount > 0) ...[
-                        const SizedBox(width: 8),
-                        _UnreadBadge(count: contact.unreadCount),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(contact.verification, style: AppTextTheme.caption),
-                ],
-              ),
-            ),
-          ],
+    return Card(
+      child: ListTile(
+        title: Text(contact.name),
+        subtitle: Text(
+          contact.unreadCount > 0
+              ? '${contact.verification} • ${contact.messagePreview} • ${contact.unreadCount} unread'
+              : '${contact.verification} • ${contact.messagePreview}',
         ),
+        trailing: Text(contact.time),
       ),
     );
   }
@@ -266,158 +193,17 @@ class _CallTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return KvSectionCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            backgroundColor: AppColors.surfaceVariant,
-            foregroundColor: AppColors.primary,
-            child: Icon(Icons.lock_person_outlined),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  contact.name,
-                  style: AppTextTheme.heading,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.call_made,
-                      size: 16,
-                      color: AppColors.success,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        'Secure call • ${contact.time}',
-                        style: AppTextTheme.caption,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Call ${contact.name}',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Secure call with ${contact.name} is coming next.',
-                  ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.call_outlined),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NewContactSheet extends StatelessWidget {
-  const _NewContactSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Add contact', style: AppTextTheme.heading),
-            const SizedBox(height: 12),
-            _ContactMethodTile(
-              icon: Icons.qr_code_2,
-              title: 'By QR',
-              subtitle: 'Scan a trusted key in person.',
-              method: _ContactAddMethod.qr,
-            ),
-            _ContactMethodTile(
-              icon: Icons.nfc_outlined,
-              title: 'By NFC',
-              subtitle: 'Tap phones to exchange keys.',
-              method: _ContactAddMethod.nfc,
-            ),
-            _ContactMethodTile(
-              icon: Icons.keyboard_outlined,
-              title: 'By manual key',
-              subtitle: 'Type or paste the contact key.',
-              method: _ContactAddMethod.manual,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ContactMethodTile extends StatelessWidget {
-  const _ContactMethodTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.method,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final _ContactAddMethod method;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      onTap: () => Navigator.of(context).pop(method),
-    );
-  }
-}
-
-class _UnreadBadge extends StatelessWidget {
-  const _UnreadBadge({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 22,
-      height: 22,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        color: AppColors.success,
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        '$count',
-        style: const TextStyle(
-          color: AppColors.background,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+    return Card(
+      child: ListTile(
+        title: Text(contact.name),
+        subtitle: Text('Secure call • ${contact.time}'),
+        trailing: const Icon(Icons.call_outlined),
       ),
     );
   }
 }
 
 enum _HomeMenuAction { settings, signOut }
-
-enum _ContactAddMethod { qr, nfc, manual }
 
 class _TrustedContact {
   const _TrustedContact(

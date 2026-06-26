@@ -9,10 +9,10 @@
 - [x] UserService
 - [x] Auto-create user profile
 
-## Phase 2 - Contacts
-- [ ] ContactModel
-- [ ] ContactService
-- [ ] Contact Requests
+## Phase 2 - Keys
+- [ ] KeyRequestModel
+- [ ] KeyService
+- [ ] Key Requests
 
 ## Phase 3 - Messaging
 - [ ] ConversationModel

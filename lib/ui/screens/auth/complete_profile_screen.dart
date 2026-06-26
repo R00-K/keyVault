@@ -150,7 +150,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           const Text('Finish your KeyVault profile', style: AppTextTheme.title),
           const SizedBox(height: 8),
           const Text(
-            'Choose how trusted contacts will recognize you before key exchange.',
+            'Choose how trusted contacts will recognize you before trust is established.',
             style: AppTextTheme.bodyMuted,
           ),
           const SizedBox(height: 24),

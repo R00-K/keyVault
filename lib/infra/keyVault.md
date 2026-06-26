@@ -30,7 +30,7 @@ The server never possesses encryption keys.
 
 ### 📅 Upcoming
 
-- Contact Repository
+- Key Repository
 - Conversations
 - Real-time Messaging
 - QR Key Exchange
@@ -74,7 +74,7 @@ lib/
 
 ## Security Principles
 
-- Physical key exchange only
+- Physical trust establishment only
 - End-to-end encryption
 - No server-side encryption keys
 - Keys stored only in secure device storage
