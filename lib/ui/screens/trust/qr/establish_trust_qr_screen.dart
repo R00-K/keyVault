@@ -12,6 +12,7 @@ import '../../../../infra/api/models/trust/trust_payload_model.dart';
 import '../../../../infra/api/models/trust/trust_session_model.dart';
 import '../../../../infra/api/services/auth_service.dart';
 import '../../../../infra/api/services/key_exchange_service.dart';
+import '../../../../infra/api/services/contact_service.dart';
 import '../../../../infra/api/services/trust_event_service.dart';
 import '../../../../infra/api/services/user_service.dart';
 import '../../../routes/route_names.dart';
@@ -65,7 +66,7 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
       if (!mounted) return;
       setState(() => _isPreparing = false);
 
-      final contactName = await showModalBottomSheet<String>(
+      final result = await showModalBottomSheet<Map<String, dynamic>>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -76,8 +77,19 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
         ),
       );
 
-      if (contactName != null && mounted) {
-        context.go(RouteNames.chatFor(contactName));
+      if (result != null && mounted) {
+        final contactName = result['displayName'] as String? ?? 'Contact';
+        final to = result['keyVaultId'] as String? ?? '';
+        final peerPublicKey = result['publicKey'] as String? ?? '';
+        context.go(
+          RouteNames.chatFor(contactName),
+          extra: <String, dynamic>{
+            'sessionId': session.sessionId,
+            'to': to,
+            'peerPublicKey': peerPublicKey,
+            'from': AuthService.currentUser?.uid ?? '',
+          },
+        );
       }
     } catch (_) {
       if (!mounted) return;
@@ -182,18 +194,18 @@ class _QrSheetState extends State<_QrSheet> {
   Future<void> _scanResponseQr() async {
     if (_isScanningResponse) return;
 
-    final payload = await Navigator.of(context).push<TrustPayloadModel>(
+    final scannedPayload = await Navigator.of(context).push<TrustPayloadModel>(
       MaterialPageRoute(builder: (_) => const QrScannerScreen()),
     );
 
-    if (payload == null || !mounted) return;
+    if (scannedPayload == null || !mounted) return;
 
     setState(() => _isScanningResponse = true);
 
     try {
       await KeyExchangeService.completeTrustWithResponse(
         session: widget.session,
-        responsePayload: payload,
+        responsePayload: scannedPayload,
       );
 
       final currentUser = AuthService.currentUser;
@@ -205,12 +217,25 @@ class _QrSheetState extends State<_QrSheet> {
         );
       }
 
+      ContactService.addContact(TrustedContact(
+        name: scannedPayload.displayName,
+        verification: 'QR verified',
+        messagePreview: 'Trust established',
+        sessionId: widget.session.sessionId,
+        to: scannedPayload.keyVaultId,
+        peerPublicKey: scannedPayload.publicKey,
+      ));
+
       if (!mounted) return;
       setState(() => _stage = _HandshakeStage.completed);
 
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        Navigator.of(context).pop(payload.displayName);
+        Navigator.of(context).pop(<String, dynamic>{
+          'displayName': scannedPayload.displayName,
+          'keyVaultId': scannedPayload.keyVaultId,
+          'publicKey': scannedPayload.publicKey,
+        });
       }
     } catch (_) {
       if (!mounted) return;
@@ -320,7 +345,7 @@ class _QrSheetState extends State<_QrSheet> {
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: AppColors.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.qr_code_scanner_outlined),
@@ -349,7 +374,7 @@ class _QrSheetState extends State<_QrSheet> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.onPrimary,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
@@ -363,7 +388,7 @@ class _QrSheetState extends State<_QrSheet> {
                   data: widget.qrData,
                   version: QrVersions.auto,
                   size: 260,
-                  backgroundColor: Colors.white,
+                  backgroundColor: AppColors.onPrimary,
                 ),
               ),
             ),

@@ -30,10 +30,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const KvPage(
+    final viewHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    const pagePadding = 48; // KvPage uses EdgeInsets.all(24)
+
+    return KvPage(
       child: SizedBox(
-        height: 620,
-        child: Column(
+        height: viewHeight - topPadding - bottomPadding - pagePadding,
+        child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             KvLogo(),

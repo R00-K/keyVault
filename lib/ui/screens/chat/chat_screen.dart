@@ -1,12 +1,32 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../chat/models/chat_message_model.dart';
+import '../../../chat/services/chat_encryption_service.dart';
+import '../../../chat/services/chat_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
+import '../../../infra/api/services/auth_service.dart';
+import '../../routes/route_names.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.contactName});
+  const ChatScreen({
+    super.key,
+    required this.contactName,
+    required this.sessionId,
+    required this.to,
+    required this.peerPublicKey,
+    this.from,
+  });
 
   final String contactName;
+  final String sessionId;
+  final String to;
+  final String peerPublicKey;
+  final String? from;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -14,141 +34,292 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
-  final _messages = <_ChatMessage>[
-    _ChatMessage(
-      text: 'Trust key accepted. This chat is now locked to this device.',
-      time: '09:12',
-      isMine: false,
-      status: _MessageStatus.read,
-    ),
-    _ChatMessage(
-      text: 'Perfect. I like that it shows the verification method too.',
-      time: '09:13',
-      isMine: true,
-      status: _MessageStatus.read,
-    ),
-    _ChatMessage(
-      text: 'Lunch keys are ready to exchange.',
-      time: '12:42',
-      isMine: false,
-      status: _MessageStatus.delivered,
-    ),
-  ];
+  final _messages = <_ChatMessage>[];
+  final _scrollController = ScrollController();
+
+  late final String _userId;
+  StreamSubscription<ChatMessageModel>? _chatSubscription;
+  var _isSending = false;
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _userId = widget.from ?? AuthService.currentUser?.uid ?? '';
+    _listenForMessages();
   }
 
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+  void _listenForMessages() {
+    _chatSubscription = ChatRepository.getChat(widget.sessionId).listen(
+      (message) {
+        if (!mounted) return;
+        _decryptAndDisplay(message);
+      },
+      onError: (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chat error: $error')),
+        );
+      },
+    );
+  }
 
-    setState(() {
-      _messages.add(
-        _ChatMessage(
-          text: text,
-          time: 'Now',
-          isMine: true,
-          status: _MessageStatus.sent,
-        ),
+  Future<void> _decryptAndDisplay(ChatMessageModel message) async {
+    try {
+      final plainText = await ChatEncryptionService.decryptMessage(
+        message: message,
+        peerPublicKey: widget.peerPublicKey,
       );
-      _messageController.clear();
+      if (!mounted) return;
+      setState(() {
+        _messages.add(_ChatMessage(
+          text: plainText,
+          timestamp: message.timestamp,
+          isMine: message.from == _userId,
+          status: message.from == _userId ? _MessageStatus.sent : _MessageStatus.delivered,
+        ));
+      });
+      _scrollToBottom();
+    } catch (_) {}
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
   @override
+  void dispose() {
+    _chatSubscription?.cancel();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _isSending) return;
+
+    _messageController.clear();
+
+    if (_userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must be signed in to send messages.')),
+      );
+      return;
+    }
+
+    setState(() => _isSending = true);
+
+    try {
+      final encrypted = await ChatEncryptionService.encryptMessage(
+        sessionId: widget.sessionId,
+        from: _userId,
+        to: widget.to,
+        message: text,
+        peerPublicKey: widget.peerPublicKey,
+      );
+
+      await ChatRepository.sendMessage(encrypted);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  void _goBack() {
+    context.go(RouteNames.home);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.surfaceVariant,
-              foregroundColor: AppColors.primary,
-              child: Icon(Icons.lock_person_outlined, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.contactName,
-                    style: AppTextTheme.heading,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Verified secure chat',
-                    style: AppTextTheme.caption,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Secure call',
-            onPressed: _showComingSoon,
-            icon: const Icon(Icons.call_outlined),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _goBack,
           ),
-          IconButton(
-            tooltip: 'Video',
-            onPressed: _showComingSoon,
-            icon: const Icon(Icons.videocam_outlined),
-          ),
-          PopupMenuButton<_ChatMenuAction>(
-            tooltip: 'More options',
-            icon: const Icon(Icons.more_vert),
-            onSelected: (_) => _showComingSoon(),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _ChatMenuAction.viewContact,
-                child: Text('View contact'),
+          titleSpacing: 0,
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.lock_person_outlined,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
               ),
-              PopupMenuItem(
-                value: _ChatMenuAction.verifyKey,
-                child: Text('Verify key'),
-              ),
-              PopupMenuItem(
-                value: _ChatMenuAction.clearChat,
-                child: Text('Clear chat'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.contactName,
+                      style: AppTextTheme.heading,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: AppColors.success,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'Verified',
+                          style: AppTextTheme.caption,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                reverse: true,
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-                children: [
-                  for (final message in _messages.reversed)
-                    _MessageBubble(message: message),
-                  const _DayChip(label: 'Today'),
-                  const _TrustBanner(),
-                ],
-              ),
+          actions: [
+            IconButton(
+              tooltip: 'Secure call',
+              onPressed: _showComingSoon,
+              icon: const Icon(Icons.call_outlined, size: 20),
             ),
-            _MessageComposer(
-              controller: _messageController,
-              onSend: _sendMessage,
-              onMore: _showComingSoon,
+            IconButton(
+              tooltip: 'Video',
+              onPressed: _showComingSoon,
+              icon: const Icon(Icons.videocam_outlined, size: 20),
+            ),
+            PopupMenuButton<_ChatMenuAction>(
+              tooltip: 'More options',
+              icon: const Icon(Icons.more_vert, size: 20),
+              onSelected: (_) => _showComingSoon(),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _ChatMenuAction.viewContact,
+                  child: Text('View contact'),
+                ),
+                PopupMenuItem(
+                  value: _ChatMenuAction.verifyKey,
+                  child: Text('Verify key'),
+                ),
+                PopupMenuItem(
+                  value: _ChatMenuAction.clearChat,
+                  child: Text('Clear chat'),
+                ),
+              ],
             ),
           ],
         ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: _messages.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.chat_outlined,
+                              size: 48,
+                              color: AppColors.textSecondary.withValues(alpha: 0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No messages yet',
+                              style: AppTextTheme.heading,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Send a message to start the conversation.',
+                              style: AppTextTheme.bodyMuted,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView(
+                        reverse: true,
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                        children: [
+                          const SizedBox(height: 4),
+                          for (final entry in _buildMessageGroups())
+                            entry,
+                        ],
+                      ),
+              ),
+              _TrustBanner(),
+              _MessageComposer(
+                controller: _messageController,
+                onSend: _sendMessage,
+                isSending: _isSending,
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  List<Widget> _buildMessageGroups() {
+    final widgets = <Widget>[];
+    String? lastDate;
+
+    for (final message in _messages.reversed) {
+      final dateStr = _formatDate(message.timestamp);
+
+      if (dateStr != lastDate) {
+        widgets.add(_DaySeparator(date: dateStr));
+        lastDate = dateStr;
+      }
+
+      widgets.add(_MessageBubble(message: message));
+    }
+
+    return widgets;
+  }
+
+  String _formatDate(Timestamp ts) {
+    final dt = ts.toDate();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final msgDate = DateTime(dt.year, dt.month, dt.day);
+
+    if (msgDate == today) return 'Today';
+    if (msgDate == yesterday) return 'Yesterday';
+
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
 
   void _showComingSoon() {
@@ -158,55 +329,56 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-class _TrustBanner extends StatelessWidget {
-  const _TrustBanner();
+class _DaySeparator extends StatelessWidget {
+  const _DaySeparator({required this.date});
+
+  final String date;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primaryMuted,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: const Row(
-        children: [
-          Icon(
-            Icons.verified_user_outlined,
-            color: AppColors.primary,
-            size: 18,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(12),
           ),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Messages are protected by a physically verified contact key.',
-              style: AppTextTheme.caption,
-            ),
-          ),
-        ],
+          child: Text(date, style: AppTextTheme.caption),
+        ),
       ),
     );
   }
 }
 
-class _DayChip extends StatelessWidget {
-  const _DayChip({required this.label});
-
-  final String label;
-
+class _TrustBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(label, style: AppTextTheme.caption),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 13,
+            color: AppColors.success.withValues(alpha: 0.8),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'End-to-end encrypted — physically verified',
+              style: AppTextTheme.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -219,110 +391,187 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final alignment = message.isMine
-        ? Alignment.centerRight
-        : Alignment.centerLeft;
-    final color = message.isMine ? AppColors.primaryMuted : AppColors.surface;
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(8),
-      topRight: const Radius.circular(8),
-      bottomLeft: Radius.circular(message.isMine ? 8 : 2),
-      bottomRight: Radius.circular(message.isMine ? 2 : 8),
-    );
+    final isMine = message.isMine;
 
-    return Align(
-      alignment: alignment,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(12, 10, 10, 7),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: radius,
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(message.text, style: AppTextTheme.body),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.72,
             ),
-            const SizedBox(height: 5),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(message.time, style: AppTextTheme.caption),
-                if (message.isMine) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    message.status.icon,
-                    size: 15,
-                    color: message.status == _MessageStatus.read
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
-                  ),
-                ],
+            padding: const EdgeInsets.fromLTRB(14, 10, 12, 6),
+            decoration: BoxDecoration(
+              color: isMine ? AppColors.primary : AppColors.surface,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isMine ? 18 : 4),
+                bottomRight: Radius.circular(isMine ? 4 : 18),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
               ],
             ),
-          ],
-        ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      color: isMine ? AppColors.onPrimary : AppColors.textPrimary,
+                      fontSize: 15,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatTime(message.timestamp),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isMine
+                            ? AppColors.onPrimary.withValues(alpha: 0.65)
+                            : AppColors.textSecondary.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    if (isMine) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        message.status.icon,
+                        size: 13,
+                        color: message.status == _MessageStatus.read
+                            ? (isMine ? AppColors.onPrimary : AppColors.primary)
+                            : (isMine
+                                ? AppColors.onPrimary.withValues(alpha: 0.5)
+                                : AppColors.textSecondary.withValues(alpha: 0.5)),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  String _formatTime(Timestamp ts) {
+    final dt = ts.toDate();
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
 }
 
-class _MessageComposer extends StatelessWidget {
+class _MessageComposer extends StatefulWidget {
   const _MessageComposer({
     required this.controller,
     required this.onSend,
-    required this.onMore,
+    this.isSending = false,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
-  final VoidCallback onMore;
+  final bool isSending;
 
+  @override
+  State<_MessageComposer> createState() => _MessageComposerState();
+}
+
+class _MessageComposerState extends State<_MessageComposer> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      padding: EdgeInsets.only(
+        left: 8,
+        right: 8,
+        top: 8,
+        bottom: MediaQuery.of(context).padding.bottom + 8,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.background,
         border: Border(top: BorderSide(color: AppColors.divider)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          IconButton(
-            tooltip: 'Attach',
-            onPressed: onMore,
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: 'Message',
-                prefixIcon: Icon(Icons.lock_outline),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: IconButton(
+                    tooltip: 'Attach',
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.textSecondary,
+                      size: 22,
+                    ),
+                  ),
                 ),
-              ),
+                SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.55,
+                  child: TextField(
+                    controller: widget.controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => widget.onSend(),
+                    decoration: const InputDecoration(
+                      hintText: 'Message',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           SizedBox(
-            width: 48,
-            height: 48,
+            width: 44,
+            height: 44,
             child: IconButton.filled(
-              tooltip: 'Send',
-              onPressed: onSend,
-              icon: const Icon(Icons.send),
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+              onPressed: widget.isSending ? null : widget.onSend,
+              icon: widget.isSending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.onPrimary,
+                      ),
+                    )
+                  : const Icon(Icons.arrow_upward, size: 20),
             ),
           ),
         ],
@@ -346,13 +595,13 @@ enum _MessageStatus {
 class _ChatMessage {
   const _ChatMessage({
     required this.text,
-    required this.time,
+    required this.timestamp,
     required this.isMine,
     required this.status,
   });
 
   final String text;
-  final String time;
+  final Timestamp timestamp;
   final bool isMine;
   final _MessageStatus status;
 }

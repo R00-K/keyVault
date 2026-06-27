@@ -43,7 +43,14 @@ final appRouter = GoRouter(
       path: RouteNames.chat,
       builder: (context, state) {
         final contactName = state.pathParameters['contactName'] ?? 'Contact';
-        return ChatScreen(contactName: contactName);
+        final extra = state.extra as Map<String, dynamic>?;
+        return ChatScreen(
+          contactName: contactName,
+          sessionId: extra?['sessionId'] as String? ?? '',
+          to: extra?['to'] as String? ?? '',
+          peerPublicKey: extra?['peerPublicKey'] as String? ?? '',
+          from: extra?['from'] as String?,
+        );
       },
     ),
     GoRoute(

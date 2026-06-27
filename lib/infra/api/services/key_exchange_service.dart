@@ -1,15 +1,12 @@
-import 'dart:math';
 import '../models/trust/trust_method.dart';
 import '../models/trust/trust_state.dart';
 import '../models/trust/trust_session_model.dart';
 import '../models/trust/trust_payload_model.dart';
 import '../models/trust/trusted_contact_model.dart';
+import '../../../crypto/crypto_service.dart';
 
 class KeyExchangeService {
   KeyExchangeService._();
-
-  // 🔐 PRIVATE KEY STORE (TEMPORARY - replace with SecureStorage later)
-  static String? _privateKey;
 
   /// STEP 1: Start Trust
   static Future<TrustSessionModel> startTrustEstablishment({
@@ -17,15 +14,15 @@ class KeyExchangeService {
   }) async {
     final sessionId = _generateId();
 
-    final publicKey = _generateFakeKey();
-
-    _privateKey = _generateFakeKey(); // ONLY HERE
+    final keyPair = await CryptoService.generateKeyPair(
+      sessionId: sessionId,
+    );
 
     return TrustSessionModel(
       sessionId: sessionId,
       method: method,
       state: TrustState.keyGenerated,
-      publicKey: publicKey,
+      publicKey: keyPair.publicKey,
     );
   }
 
@@ -49,20 +46,15 @@ class KeyExchangeService {
   static Future<TrustSessionModel> receiveTrustRequest({
     required TrustPayloadModel payload,
   }) async {
-    final publicKey = _generateFakeKey();
-
-    _privateKey = _generateFakeKey(); // receiver private key (temporary)
+    final keyPair = await CryptoService.generateKeyPair(
+      sessionId: payload.sessionId,
+    );
 
     return TrustSessionModel(
       sessionId: payload.sessionId,
-
-      // ✅ FIX: do NOT hardcode qr
-      method: TrustMethod.qr, // ONLY if you're strictly QR-only for now
-
+      method: TrustMethod.qr,
       state: TrustState.received,
-
-      publicKey: publicKey,
-
+      publicKey: keyPair.publicKey,
       peerPublicKey: payload.publicKey,
     );
   }
@@ -122,10 +114,6 @@ class KeyExchangeService {
   // -----------------------
   // INTERNAL HELPERS
   // -----------------------
-
-  static String _generateFakeKey() {
-    return List.generate(32, (_) => Random().nextInt(255)).join();
-  }
 
   static String _generateId() {
     return DateTime.now().microsecondsSinceEpoch.toString();

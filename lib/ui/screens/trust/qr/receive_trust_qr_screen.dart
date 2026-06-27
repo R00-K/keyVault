@@ -10,6 +10,7 @@ import '../../../../core/theme/app_text_theme.dart';
 import '../../../../infra/api/models/trust/trust_payload_model.dart';
 import '../../../../infra/api/models/trust/trust_session_model.dart';
 import '../../../../infra/api/services/auth_service.dart';
+import '../../../../infra/api/services/contact_service.dart';
 import '../../../../infra/api/services/key_exchange_service.dart';
 import '../../../../infra/api/services/trust_event_service.dart';
 import '../../../../infra/api/services/user_service.dart';
@@ -33,6 +34,8 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
   StreamSubscription<dynamic>? _eventSub;
   var _trustEstablished = false;
   String? _contactDisplayName;
+  String? _contactKeyVaultId;
+  String? _contactPublicKey;
 
   @override
   void dispose() {
@@ -50,6 +53,8 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
     if (payload == null) return;
 
     _contactDisplayName = payload.displayName;
+    _contactKeyVaultId = payload.keyVaultId;
+    _contactPublicKey = payload.publicKey;
 
     setState(() => _isProcessing = true);
 
@@ -99,11 +104,27 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
         if (!snapshot.exists || !mounted) return;
         final data = snapshot.data();
         if (data?['type'] == 'trust_established') {
+          ContactService.addContact(TrustedContact(
+            name: _contactDisplayName ?? 'Contact',
+            verification: 'QR verified',
+            messagePreview: 'Trust established',
+            sessionId: payload.sessionId,
+            to: _contactKeyVaultId ?? '',
+            peerPublicKey: _contactPublicKey ?? '',
+          ));
+
           setState(() => _trustEstablished = true);
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) {
+              final contactName = _contactDisplayName ?? 'Contact';
               context.go(
-                RouteNames.chatFor(_contactDisplayName ?? 'Contact'),
+                RouteNames.chatFor(contactName),
+                extra: <String, dynamic>{
+                  'sessionId': payload.sessionId,
+                  'to': _contactKeyVaultId ?? '',
+                  'peerPublicKey': _contactPublicKey ?? '',
+                  'from': AuthService.currentUser?.uid ?? '',
+                },
               );
             }
           });
@@ -217,7 +238,7 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.onPrimary,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
@@ -231,7 +252,7 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
                   data: _responseQrData!,
                   version: QrVersions.auto,
                   size: 260,
-                  backgroundColor: Colors.white,
+                  backgroundColor: AppColors.onPrimary,
                 ),
               ),
               const SizedBox(height: 16),
