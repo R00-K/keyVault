@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import '../../../crypto/secure_key_storage.dart';
 
 class TrustedContact {
@@ -22,28 +20,6 @@ class TrustedContact {
     this.to = '',
     this.peerPublicKey = '',
   });
-
-  Map<String, dynamic> toMap() => {
-    'name': name,
-    'verification': verification,
-    'messagePreview': messagePreview,
-    'time': time,
-    'unreadCount': unreadCount,
-    'sessionId': sessionId,
-    'to': to,
-    'peerPublicKey': peerPublicKey,
-  };
-
-  factory TrustedContact.fromMap(Map<String, dynamic> map) => TrustedContact(
-    name: map['name'] as String? ?? '',
-    verification: map['verification'] as String? ?? '',
-    messagePreview: map['messagePreview'] as String? ?? '',
-    time: map['time'] as String? ?? '',
-    unreadCount: map['unreadCount'] as int? ?? 0,
-    sessionId: map['sessionId'] as String? ?? '',
-    to: map['to'] as String? ?? '',
-    peerPublicKey: map['peerPublicKey'] as String? ?? '',
-  );
 }
 
 class ContactService {
@@ -55,23 +31,36 @@ class ContactService {
 
   static int get count => _contacts.length;
 
-  /// Load contacts from persistent storage (SecureKeyStorage).
   static Future<void> loadContacts() async {
-    final raw = await SecureKeyStorage.read(key: 'trusted_contacts');
-    if (raw == null || raw.isEmpty) return;
+    _contacts.clear();
 
-    try {
-      final list = jsonDecode(raw) as List<dynamic>;
-      _contacts.clear();
-      for (final item in list) {
-        _contacts.add(TrustedContact.fromMap(item as Map<String, dynamic>));
-      }
-    } catch (_) {
-      _contacts.clear();
+    final countStr = await SecureKeyStorage.read(key: 'contact_count');
+    if (countStr == null || countStr.isEmpty) return;
+
+    final count = int.tryParse(countStr);
+    if (count == null || count <= 0) return;
+
+    for (var i = 0; i < count; i++) {
+      final prefix = 'contact_${i}_';
+      final name = await SecureKeyStorage.read(key: '${prefix}name');
+      if (name == null) continue;
+
+      final contact = TrustedContact(
+        name: name,
+        verification: await SecureKeyStorage.read(key: '${prefix}verification') ?? '',
+        messagePreview: await SecureKeyStorage.read(key: '${prefix}messagePreview') ?? '',
+        time: await SecureKeyStorage.read(key: '${prefix}time') ?? '',
+        unreadCount: int.tryParse(
+          await SecureKeyStorage.read(key: '${prefix}unreadCount') ?? '',
+        ) ?? 0,
+        sessionId: await SecureKeyStorage.read(key: '${prefix}sessionId') ?? '',
+        to: await SecureKeyStorage.read(key: '${prefix}to') ?? '',
+        peerPublicKey: await SecureKeyStorage.read(key: '${prefix}peerPublicKey') ?? '',
+      );
+      _contacts.add(contact);
     }
   }
 
-  /// Persist a contact to both in-memory list and SecureKeyStorage.
   static Future<void> addContact(TrustedContact contact) async {
     _contacts.add(contact);
     await _saveToStorage();
@@ -79,11 +68,23 @@ class ContactService {
   }
 
   static Future<void> _saveToStorage() async {
-    final list = _contacts.map((c) => c.toMap()).toList();
-    await SecureKeyStorage.write(key: 'trusted_contacts', value: jsonEncode(list));
+    final count = _contacts.length;
+    await SecureKeyStorage.write(key: 'contact_count', value: count.toString());
+
+    for (var i = 0; i < count; i++) {
+      final c = _contacts[i];
+      final prefix = 'contact_${i}_';
+      await SecureKeyStorage.write(key: '${prefix}name', value: c.name);
+      await SecureKeyStorage.write(key: '${prefix}verification', value: c.verification);
+      await SecureKeyStorage.write(key: '${prefix}messagePreview', value: c.messagePreview);
+      await SecureKeyStorage.write(key: '${prefix}time', value: c.time);
+      await SecureKeyStorage.write(key: '${prefix}unreadCount', value: c.unreadCount.toString());
+      await SecureKeyStorage.write(key: '${prefix}sessionId', value: c.sessionId);
+      await SecureKeyStorage.write(key: '${prefix}to', value: c.to);
+      await SecureKeyStorage.write(key: '${prefix}peerPublicKey', value: c.peerPublicKey);
+    }
   }
 
-  /// Remove a contact by sessionId.
   static Future<void> removeContact(String sessionId) async {
     _contacts.removeWhere((c) => c.sessionId == sessionId);
     await _saveToStorage();

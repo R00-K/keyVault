@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
-import '../../../crypto/secure_key_storage.dart';
 import '../../../infra/api/services/auth_service.dart';
 import '../../../infra/api/services/contact_service.dart';
 import '../../routes/route_names.dart';
@@ -31,8 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadState() async {
     await ContactService.loadContacts();
-    final hasContacts = ContactService.count > 0 ||
-        await SecureKeyStorage.hasTrustedContact();
+    final hasContacts = ContactService.count > 0;
     if (!mounted) return;
     setState(() {
       if (!hasContacts) {
