@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:keyvault/crypto/aes_service.dart';
 import 'package:keyvault/crypto/crypto_service.dart';
 import 'package:keyvault/crypto/hkdf_service.dart';
@@ -58,15 +57,20 @@ class ChatEncryptionService {
       aesKey: aesKey,
       message: message,
     );
-
     return ChatMessageModel(
+      messageId: DateTime.now().microsecondsSinceEpoch.toString(),
+
       from: from,
       to: to,
       sessionId: sessionId,
+
       cipherText: result['cipherText'] as String,
       nonce: result['nonce'] as String,
       mac: result['mac'] as String,
-      timestamp: Timestamp.now(),
+      plainText: message,
+
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      status: 'sent',
     );
   }
 

@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../chat/models/chat_message_model.dart';
-import '../../../chat/services/chat_encryption_service.dart';
-import '../../../chat/services/chat_repository.dart';
+import '../../../chat/services/chat_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/services/auth_service.dart';
@@ -38,21 +36,47 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
 
   late final String _userId;
-  StreamSubscription<ChatMessageModel>? _chatSubscription;
+  StreamSubscription<List<ChatMessageModel>>? _localSubscription;
   var _isSending = false;
 
   @override
   void initState() {
     super.initState();
     _userId = widget.from ?? AuthService.currentUser?.uid ?? '';
-    _listenForMessages();
+    ChatService.startSync(
+      sessionId: widget.sessionId,
+      peerPublicKey: widget.peerPublicKey,
+    );
+    _listenLocalMessages();
   }
 
-  void _listenForMessages() {
-    _chatSubscription = ChatRepository.getChat(widget.sessionId).listen(
-      (message) {
+  void _listenLocalMessages() {
+    var isFirst = true;
+
+    _localSubscription = ChatService.getMessagesStream(widget.sessionId).listen(
+      (messages) {
         if (!mounted) return;
-        _decryptAndDisplay(message);
+        setState(() {
+          if (isFirst) {
+            _messages.clear();
+            for (final msg in messages) {
+              final plainText = msg.plainText;
+              if (plainText == null) continue;
+              _messages.add(_ChatMessage(
+                text: plainText,
+                timestamp: msg.timestamp,
+                isMine: msg.from == _userId,
+                status: msg.from == _userId
+                    ? _MessageStatus.sent
+                    : _MessageStatus.delivered,
+              ));
+            }
+            isFirst = false;
+          } else {
+            _applyChanges(messages);
+          }
+        });
+        _scrollToBottom();
       },
       onError: (error) {
         if (!mounted) return;
@@ -63,23 +87,25 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _decryptAndDisplay(ChatMessageModel message) async {
-    try {
-      final plainText = await ChatEncryptionService.decryptMessage(
-        message: message,
-        peerPublicKey: widget.peerPublicKey,
-      );
-      if (!mounted) return;
-      setState(() {
-        _messages.add(_ChatMessage(
-          text: plainText,
-          timestamp: message.timestamp,
-          isMine: message.from == _userId,
-          status: message.from == _userId ? _MessageStatus.sent : _MessageStatus.delivered,
-        ));
-      });
-      _scrollToBottom();
-    } catch (_) {}
+  void _applyChanges(List<ChatMessageModel> messages) {
+    final existingIds = _messages.map((m) => '${m.timestamp}_${m.text}').toSet();
+
+    for (final msg in messages) {
+      final plainText = msg.plainText;
+      if (plainText == null) continue;
+
+      final key = '${msg.timestamp}_$plainText';
+      if (existingIds.contains(key)) continue;
+
+      _messages.add(_ChatMessage(
+        text: plainText,
+        timestamp: msg.timestamp,
+        isMine: msg.from == _userId,
+        status: msg.from == _userId
+            ? _MessageStatus.sent
+            : _MessageStatus.delivered,
+      ));
+    }
   }
 
   void _scrollToBottom() {
@@ -96,7 +122,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _chatSubscription?.cancel();
+    _localSubscription?.cancel();
+    ChatService.stopSync();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -118,15 +145,13 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _isSending = true);
 
     try {
-      final encrypted = await ChatEncryptionService.encryptMessage(
+      await ChatService.sendMessage(
         sessionId: widget.sessionId,
         from: _userId,
         to: widget.to,
         message: text,
         peerPublicKey: widget.peerPublicKey,
       );
-
-      await ChatRepository.sendMessage(encrypted);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -305,8 +330,9 @@ class _ChatScreenState extends State<ChatScreen> {
     return widgets;
   }
 
-  String _formatDate(Timestamp ts) {
-    final dt = ts.toDate();
+  String _formatDate(int timestampMs) {
+    final dt =
+        DateTime.fromMillisecondsSinceEpoch(timestampMs);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
@@ -469,8 +495,8 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  String _formatTime(Timestamp ts) {
-    final dt = ts.toDate();
+  String _formatTime(int timestampMs) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
@@ -601,7 +627,7 @@ class _ChatMessage {
   });
 
   final String text;
-  final Timestamp timestamp;
+  final int timestamp;
   final bool isMine;
   final _MessageStatus status;
 }
