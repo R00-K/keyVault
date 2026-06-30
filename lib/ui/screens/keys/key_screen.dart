@@ -5,7 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/models/key_request_model.dart';
 import '../../../infra/api/services/auth_service.dart';
-import '../../../infra/api/services/TrustRequestService.dart';
+import '../../../infra/api/services/trust_request_service.dart';
 import '../../routes/route_names.dart';
 import '../../widgets/kv_button.dart';
 import '../../widgets/kv_section_card.dart';

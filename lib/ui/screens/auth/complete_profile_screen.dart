@@ -6,6 +6,7 @@ import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/models/user_model.dart';
 import '../../../infra/api/services/auth_service.dart';
 import '../../../infra/api/services/user_service.dart';
+import '../../../notifications/notification_service.dart';
 import '../../routes/route_names.dart';
 import '../../widgets/kv_button.dart';
 import '../../widgets/kv_page.dart';
@@ -91,6 +92,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
 
       await UserService.createUser(user);
       debugPrint('[CompleteProfileScreen] Firestore user document created.');
+
+      await NotificationService.saveTokenToFirestore(firebaseUser.uid);
 
       await firebaseUser.updateDisplayName(displayName);
       debugPrint('[CompleteProfileScreen] Firebase display name updated.');

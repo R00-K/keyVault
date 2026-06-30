@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_text_theme.dart';
 import '../../../infra/api/services/auth_service.dart';
+import '../../../notifications/notification_service.dart';
 import '../../routes/route_names.dart';
 import '../../widgets/kv_button.dart';
 import '../../widgets/kv_logo.dart';
@@ -46,6 +47,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await AuthService.signIn(email: email, password: password);
+      final user = AuthService.currentUser;
+      if (user != null) {
+        await NotificationService.saveTokenToFirestore(user.uid);
+      }
       if (mounted) {
         context.go(RouteNames.home);
       }

@@ -36,51 +36,100 @@ class LocalChatStorage {
     if (_db != null) return;
 
     final dir = await getApplicationDocumentsDirectory();
+    final dbPath = '${dir.path}/keyvault_chat.db';
 
-    _db = await openDatabase(
-      '${dir.path}/keyvault_chat.db',
-      version: 2,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE messages (
-            messageId TEXT PRIMARY KEY,
-            fromUser TEXT NOT NULL,
-            toUser TEXT NOT NULL,
-            sessionId TEXT NOT NULL,
-            cipherText TEXT NOT NULL,
-            nonce TEXT NOT NULL,
-            mac TEXT NOT NULL,
-            plainText TEXT,
-            timestamp INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'sent'
-          )
-        ''');
+    try {
+      _db = await openDatabase(
+        dbPath,
+        version: 2,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE messages (
+              messageId TEXT PRIMARY KEY,
+              fromUser TEXT NOT NULL,
+              toUser TEXT NOT NULL,
+              sessionId TEXT NOT NULL,
+              cipherText TEXT NOT NULL,
+              nonce TEXT NOT NULL,
+              mac TEXT NOT NULL,
+              plainText TEXT,
+              timestamp INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'sent'
+            )
+          ''');
 
-        await db.execute('''
-          CREATE INDEX idx_messages_session_time
-          ON messages(sessionId, timestamp)
-        ''');
+          await db.execute('''
+            CREATE INDEX idx_messages_session_time
+            ON messages(sessionId, timestamp)
+          ''');
 
-        await db.execute('''
-          CREATE TABLE sessions (
-            sessionId TEXT PRIMARY KEY,
-            contactId TEXT NOT NULL,
-            keyVaultId TEXT NOT NULL,
-            displayName TEXT NOT NULL,
-            peerPublicKey TEXT NOT NULL,
-            isTrusted INTEGER NOT NULL DEFAULT 0,
-            lastMessage TEXT,
-            lastMessageTime INTEGER,
-            unreadCount INTEGER NOT NULL DEFAULT 0
-          )
-        ''');
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute('ALTER TABLE messages ADD COLUMN plainText TEXT');
-        }
-      },
-    );
+          await db.execute('''
+            CREATE TABLE sessions (
+              sessionId TEXT PRIMARY KEY,
+              contactId TEXT NOT NULL,
+              keyVaultId TEXT NOT NULL,
+              displayName TEXT NOT NULL,
+              peerPublicKey TEXT NOT NULL,
+              isTrusted INTEGER NOT NULL DEFAULT 0,
+              lastMessage TEXT,
+              lastMessageTime INTEGER,
+              unreadCount INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            try {
+              await db.execute(
+                  'ALTER TABLE messages ADD COLUMN plainText TEXT');
+            } catch (_) {}
+          }
+        },
+      );
+    } catch (_) {
+      // If open fails (corrupted DB, schema mismatch, etc.),
+      // delete and recreate from scratch
+      try {
+        await deleteDatabase(dbPath);
+      } catch (_) {}
+      _db = await openDatabase(
+        dbPath,
+        version: 2,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE messages (
+              messageId TEXT PRIMARY KEY,
+              fromUser TEXT NOT NULL,
+              toUser TEXT NOT NULL,
+              sessionId TEXT NOT NULL,
+              cipherText TEXT NOT NULL,
+              nonce TEXT NOT NULL,
+              mac TEXT NOT NULL,
+              plainText TEXT,
+              timestamp INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'sent'
+            )
+          ''');
+          await db.execute('''
+            CREATE INDEX idx_messages_session_time
+            ON messages(sessionId, timestamp)
+          ''');
+          await db.execute('''
+            CREATE TABLE sessions (
+              sessionId TEXT PRIMARY KEY,
+              contactId TEXT NOT NULL,
+              keyVaultId TEXT NOT NULL,
+              displayName TEXT NOT NULL,
+              peerPublicKey TEXT NOT NULL,
+              isTrusted INTEGER NOT NULL DEFAULT 0,
+              lastMessage TEXT,
+              lastMessageTime INTEGER,
+              unreadCount INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+        },
+      );
+    }
 
     _changes.add(const SessionCleared(''));
   }

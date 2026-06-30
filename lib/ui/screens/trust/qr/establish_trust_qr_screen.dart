@@ -79,7 +79,7 @@ class _EstablishTrustQrScreenState extends State<EstablishTrustQrScreen> {
 
       if (result != null && mounted) {
         final contactName = result['displayName'] as String? ?? 'Contact';
-        final to = result['keyVaultId'] as String? ?? '';
+        final to = result['uid'] as String? ?? '';
         final peerPublicKey = result['publicKey'] as String? ?? '';
         context.go(
           RouteNames.chatFor(contactName),
@@ -217,12 +217,17 @@ class _QrSheetState extends State<_QrSheet> {
         );
       }
 
+      final peerProfile = await UserService.getUserByKeyVaultId(
+        scannedPayload.keyVaultId,
+      );
+      final peerUid = peerProfile?.uid ?? '';
+
       ContactService.addContact(TrustedContact(
         name: scannedPayload.displayName,
         verification: 'QR verified',
         messagePreview: 'Trust established',
         sessionId: widget.session.sessionId,
-        to: scannedPayload.keyVaultId,
+        to: peerUid,
         peerPublicKey: scannedPayload.publicKey,
       ));
 
@@ -233,7 +238,7 @@ class _QrSheetState extends State<_QrSheet> {
       if (mounted) {
         Navigator.of(context).pop(<String, dynamic>{
           'displayName': scannedPayload.displayName,
-          'keyVaultId': scannedPayload.keyVaultId,
+          'uid': peerUid,
           'publicKey': scannedPayload.publicKey,
         });
       }

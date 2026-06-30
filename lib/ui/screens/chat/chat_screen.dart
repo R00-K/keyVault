@@ -7,7 +7,10 @@ import '../../../chat/models/chat_message_model.dart';
 import '../../../chat/services/chat_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
+import '../../../crypto/secure_key_storage.dart';
 import '../../../infra/api/services/auth_service.dart';
+import '../../../infra/api/services/contact_service.dart';
+import '../../../watch/services/watch_service.dart';
 import '../../routes/route_names.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -51,29 +54,22 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _listenLocalMessages() {
-    var isFirst = true;
-
     _localSubscription = ChatService.getMessagesStream(widget.sessionId).listen(
       (messages) {
         if (!mounted) return;
         setState(() {
-          if (isFirst) {
-            _messages.clear();
-            for (final msg in messages) {
-              final plainText = msg.plainText;
-              if (plainText == null) continue;
-              _messages.add(_ChatMessage(
-                text: plainText,
-                timestamp: msg.timestamp,
-                isMine: msg.from == _userId,
-                status: msg.from == _userId
-                    ? _MessageStatus.sent
-                    : _MessageStatus.delivered,
-              ));
-            }
-            isFirst = false;
-          } else {
-            _applyChanges(messages);
+          _messages.clear();
+          for (final msg in messages) {
+            final plainText = msg.plainText;
+            if (plainText == null) continue;
+            _messages.add(_ChatMessage(
+              text: plainText,
+              timestamp: msg.timestamp,
+              isMine: msg.from == _userId,
+              status: msg.from == _userId
+                  ? _MessageStatus.sent
+                  : _MessageStatus.delivered,
+            ));
           }
         });
         _scrollToBottom();
@@ -85,27 +81,6 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
-  }
-
-  void _applyChanges(List<ChatMessageModel> messages) {
-    final existingIds = _messages.map((m) => '${m.timestamp}_${m.text}').toSet();
-
-    for (final msg in messages) {
-      final plainText = msg.plainText;
-      if (plainText == null) continue;
-
-      final key = '${msg.timestamp}_$plainText';
-      if (existingIds.contains(key)) continue;
-
-      _messages.add(_ChatMessage(
-        text: plainText,
-        timestamp: msg.timestamp,
-        isMine: msg.from == _userId,
-        status: msg.from == _userId
-            ? _MessageStatus.sent
-            : _MessageStatus.delivered,
-      ));
-    }
   }
 
   void _scrollToBottom() {
@@ -243,19 +218,25 @@ class _ChatScreenState extends State<ChatScreen> {
             PopupMenuButton<_ChatMenuAction>(
               tooltip: 'More options',
               icon: const Icon(Icons.more_vert, size: 20),
-              onSelected: (_) => _showComingSoon(),
+              onSelected: _handleMenuAction,
               itemBuilder: (context) => const [
                 PopupMenuItem(
-                  value: _ChatMenuAction.viewContact,
-                  child: Text('View contact'),
-                ),
-                PopupMenuItem(
-                  value: _ChatMenuAction.verifyKey,
-                  child: Text('Verify key'),
-                ),
-                PopupMenuItem(
                   value: _ChatMenuAction.clearChat,
-                  child: Text('Clear chat'),
+                  child: ListTile(
+                    leading: Icon(Icons.delete_sweep_outlined, size: 20),
+                    title: Text('Clear chat'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _ChatMenuAction.deleteChat,
+                  child: ListTile(
+                    leading: Icon(Icons.delete_forever_outlined, size: 20),
+                    title: Text('Delete chat'),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
               ],
             ),
@@ -304,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 controller: _messageController,
                 onSend: _sendMessage,
                 isSending: _isSending,
+                onWatchFile: _handleWatchFile,
               ),
             ],
           ),
@@ -346,6 +328,183 @@ class _ChatScreenState extends State<ChatScreen> {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  Future<void> _handleWatchFile() async {
+    await _showAttachmentSheet();
+  }
+
+  Future<void> _showAttachmentSheet() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Share',
+              style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _ModernAttachmentTile(
+                    icon: Icons.photo_library_outlined,
+                    label: 'Photos',
+                    color: const Color(0xFF4CAF50),
+                    onTap: () => Navigator.pop(ctx, 'photos'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ModernAttachmentTile(
+                    icon: Icons.videocam_outlined,
+                    label: 'Videos',
+                    color: const Color(0xFF2196F3),
+                    onTap: () => Navigator.pop(ctx, 'videos'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _ModernAttachmentTile(
+                    icon: Icons.description_outlined,
+                    label: 'Documents',
+                    color: const Color(0xFFFF9800),
+                    onTap: () => Navigator.pop(ctx, 'documents'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ModernAttachmentTile(
+                    icon: Icons.visibility_outlined,
+                    label: 'Watch Together',
+                    color: const Color(0xFF9C27B0),
+                    highlighted: true,
+                    onTap: () => Navigator.pop(ctx, 'watch'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    switch (result) {
+      case 'photos':
+      case 'videos':
+      case 'documents':
+        _showComingSoon();
+      case 'watch':
+        await _pickAndSendWatchInvite();
+    }
+  }
+
+  Future<void> _pickAndSendWatchInvite() async {
+    final localVideo = await WatchService.pickVideo();
+    if (localVideo == null) return;
+
+    final session = await WatchService.startWatchSession(
+      chatSessionId: widget.sessionId,
+      viewerUid: widget.to,
+      localVideo: localVideo,
+    );
+
+    if (!mounted) return;
+    context.go(RouteNames.watchFor(session.watchSessionId));
+  }
+
+  void _handleMenuAction(_ChatMenuAction action) {
+    switch (action) {
+      case _ChatMenuAction.clearChat:
+        _clearChat();
+      case _ChatMenuAction.deleteChat:
+        _deleteChat();
+    }
+  }
+
+  Future<void> _clearChat() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear chat?'),
+        content: Text(
+            'All messages with ${widget.contactName} will be removed from this device.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Clear')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await ChatService.clearChat(widget.sessionId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Chat cleared')),
+    );
+  }
+
+  Future<void> _deleteChat() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete chat?'),
+        content: Text(
+            'This will remove all messages and delete ${widget.contactName} from your contacts.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await ChatService.clearChat(widget.sessionId);
+    await ContactService.removeContact(widget.sessionId);
+    await SecureKeyStorage.deletePrivateKey(sessionId: widget.sessionId);
+    await SecureKeyStorage.deletePublicKey(sessionId: widget.sessionId);
+
+    await ContactService.loadContacts();
+
+    if (!mounted) return;
+    context.go(RouteNames.home);
   }
 
   void _showComingSoon() {
@@ -508,11 +667,13 @@ class _MessageComposer extends StatefulWidget {
     required this.controller,
     required this.onSend,
     this.isSending = false,
+    this.onWatchFile,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final bool isSending;
+  final VoidCallback? onWatchFile;
 
   @override
   State<_MessageComposer> createState() => _MessageComposerState();
@@ -547,7 +708,7 @@ class _MessageComposerState extends State<_MessageComposer> {
                   height: 44,
                   child: IconButton(
                     tooltip: 'Attach',
-                    onPressed: () {},
+                    onPressed: widget.onWatchFile,
                     icon: const Icon(
                       Icons.add_circle_outline,
                       color: AppColors.textSecondary,
@@ -606,7 +767,7 @@ class _MessageComposerState extends State<_MessageComposer> {
   }
 }
 
-enum _ChatMenuAction { viewContact, verifyKey, clearChat }
+enum _ChatMenuAction { clearChat, deleteChat }
 
 enum _MessageStatus {
   sent(Icons.check),
@@ -630,4 +791,64 @@ class _ChatMessage {
   final int timestamp;
   final bool isMine;
   final _MessageStatus status;
+}
+
+class _ModernAttachmentTile extends StatelessWidget {
+  const _ModernAttachmentTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: highlighted
+              ? color.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: highlighted
+              ? Border.all(color: color.withValues(alpha: 0.3))
+              : Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: highlighted ? FontWeight.w600 : FontWeight.w500,
+                color: highlighted ? color : null,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

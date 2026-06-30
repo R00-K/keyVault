@@ -15,6 +15,11 @@ class RouteNames {
   static const receiveTrustNfc = '/trust/receive/nfc';
   static const establishTrustManual = '/trust/establish/manual';
   static const receiveTrustManual = '/trust/receive/manual';
+  static const watch = '/watch/:watchSessionId';
+
+  static String watchFor(String watchSessionId) {
+    return '/watch/${Uri.encodeComponent(watchSessionId)}';
+  }
 
   static String chatFor(String contactName) {
     return '/chat/${Uri.encodeComponent(contactName)}';

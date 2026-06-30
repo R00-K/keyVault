@@ -89,4 +89,14 @@ class ContactService {
     _contacts.removeWhere((c) => c.sessionId == sessionId);
     await _saveToStorage();
   }
+
+  static Future<TrustedContact?> getContactBySessionId(String sessionId) async {
+    await loadContacts();
+    for (final contact in _contacts) {
+      if (contact.sessionId == sessionId) {
+        return contact;
+      }
+    }
+    return null;
+  }
 }

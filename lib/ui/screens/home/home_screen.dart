@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../chat/services/chat_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_theme.dart';
+import '../../../crypto/secure_key_storage.dart';
 import '../../../infra/api/services/auth_service.dart';
 import '../../../infra/api/services/contact_service.dart';
 import '../../routes/route_names.dart';
@@ -129,7 +131,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return _ChatsView(contacts: contacts, onChatTap: _openChat);
+    return _ChatsView(
+      contacts: contacts,
+      onChatTap: _openChat,
+      onDeleteContact: _deleteContact,
+    );
   }
 
   void _openChat(TrustedContact contact) {
@@ -142,6 +148,36 @@ class _HomeScreenState extends State<HomeScreen> {
         'from': AuthService.currentUser?.uid ?? '',
       },
     );
+  }
+
+  Future<void> _deleteContact(TrustedContact contact) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete chat?'),
+        content: Text(
+            'Delete all messages and remove ${contact.name} from your contacts?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await ChatService.clearChat(contact.sessionId);
+    await ContactService.removeContact(contact.sessionId);
+    await SecureKeyStorage.deletePrivateKey(sessionId: contact.sessionId);
+    await SecureKeyStorage.deletePublicKey(sessionId: contact.sessionId);
+    await ContactService.loadContacts();
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _handleMenuAction(
@@ -211,10 +247,15 @@ class _EmptyChatsView extends StatelessWidget {
 }
 
 class _ChatsView extends StatelessWidget {
-  const _ChatsView({required this.contacts, required this.onChatTap});
+  const _ChatsView({
+    required this.contacts,
+    required this.onChatTap,
+    required this.onDeleteContact,
+  });
 
   final List<TrustedContact> contacts;
   final void Function(TrustedContact) onChatTap;
+  final void Function(TrustedContact) onDeleteContact;
 
   @override
   Widget build(BuildContext context) {
@@ -223,6 +264,7 @@ class _ChatsView extends StatelessWidget {
       itemBuilder: (context, index) => _ContactTile(
         contact: contacts[index],
         onTap: () => onChatTap(contacts[index]),
+        onLongPress: () => onDeleteContact(contacts[index]),
       ),
       separatorBuilder: (context, index) => const SizedBox(height: 10),
       itemCount: contacts.length,
@@ -256,16 +298,18 @@ class _CallsView extends StatelessWidget {
 }
 
 class _ContactTile extends StatelessWidget {
-  const _ContactTile({required this.contact, this.onTap});
+  const _ContactTile({required this.contact, this.onTap, this.onLongPress});
 
   final TrustedContact contact;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
         onTap: onTap,
+        onLongPress: onLongPress,
         title: Text(contact.name),
         subtitle: Text(
           contact.unreadCount > 0

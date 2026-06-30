@@ -54,6 +54,17 @@ class UserService {
     ).doc(user.uid).update(user.toMap());
   }
 
+  /// Get a user by their keyVaultId
+  static Future<UserModel?> getUserByKeyVaultId(String keyVaultId) async {
+    final snapshot = await FirestoreService.collection(
+      _collection,
+    ).where('keyVaultId', isEqualTo: keyVaultId).limit(1).get();
+
+    if (snapshot.docs.isEmpty) return null;
+
+    return UserModel.fromMap(snapshot.docs.first.data());
+  }
+
   /// Update only the online status
   static Future<void> updateOnlineStatus({
     required String uid,

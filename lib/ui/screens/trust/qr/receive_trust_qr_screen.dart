@@ -34,7 +34,7 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
   StreamSubscription<dynamic>? _eventSub;
   var _trustEstablished = false;
   String? _contactDisplayName;
-  String? _contactKeyVaultId;
+  String? _contactUid;
   String? _contactPublicKey;
 
   @override
@@ -53,8 +53,12 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
     if (payload == null) return;
 
     _contactDisplayName = payload.displayName;
-    _contactKeyVaultId = payload.keyVaultId;
     _contactPublicKey = payload.publicKey;
+
+    final peerProfile = await UserService.getUserByKeyVaultId(
+      payload.keyVaultId,
+    );
+    _contactUid = peerProfile?.uid;
 
     setState(() => _isProcessing = true);
 
@@ -104,12 +108,13 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
         if (!snapshot.exists || !mounted) return;
         final data = snapshot.data();
         if (data?['type'] == 'trust_established') {
+          final peerUid = _contactUid ?? '';
           ContactService.addContact(TrustedContact(
             name: _contactDisplayName ?? 'Contact',
             verification: 'QR verified',
             messagePreview: 'Trust established',
             sessionId: payload.sessionId,
-            to: _contactKeyVaultId ?? '',
+            to: peerUid,
             peerPublicKey: _contactPublicKey ?? '',
           ));
 
@@ -121,7 +126,7 @@ class _ReceiveTrustQrScreenState extends State<ReceiveTrustQrScreen> {
                 RouteNames.chatFor(contactName),
                 extra: <String, dynamic>{
                   'sessionId': payload.sessionId,
-                  'to': _contactKeyVaultId ?? '',
+                  'to': peerUid,
                   'peerPublicKey': _contactPublicKey ?? '',
                   'from': AuthService.currentUser?.uid ?? '',
                 },

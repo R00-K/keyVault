@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:keyvault/chat/models/chat_message_model.dart';
 import 'package:keyvault/chat/repositories/chat_repository.dart';
 import 'package:keyvault/chat/services/chat_encryption_service.dart';
@@ -49,7 +50,9 @@ class ChatService {
 
     try {
       await ChatRepository.sendMessage(encrypted);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ChatService] Failed to sync message to Firestore: $e');
+    }
   }
 
   static Stream<List<ChatMessageModel>> getMessagesStream(String sessionId) {

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
@@ -14,9 +15,15 @@ import '../screens/trust/nfc/receive_trust_nfc_screen.dart';
 import '../screens/trust/qr/establish_trust_qr_screen.dart';
 import '../screens/trust/qr/receive_trust_qr_screen.dart';
 import '../screens/trust/recieve/receive_trust_screen.dart';
+import '../screens/watch/watching_screen.dart';
 import 'route_names.dart';
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
+BuildContext? get appContext => _rootNavigatorKey.currentContext;
+
 final appRouter = GoRouter(
+  navigatorKey: _rootNavigatorKey,
   initialLocation: RouteNames.splash,
   routes: [
     GoRoute(
@@ -84,6 +91,13 @@ final appRouter = GoRouter(
     GoRoute(
       path: RouteNames.receiveTrustManual,
       builder: (context, state) => const ReceiveTrustManualScreen(),
+    ),
+    GoRoute(
+      path: RouteNames.watch,
+      builder: (context, state) {
+        final watchSessionId = state.pathParameters['watchSessionId'] ?? '';
+        return WatchingScreen(watchSessionId: watchSessionId);
+      },
     ),
   ],
 );
